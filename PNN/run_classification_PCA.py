@@ -6,6 +6,8 @@ import numpy as np
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from sklearn.decomposition import PCA, FastICA
+
 
 from deepctr_torch.inputs import SparseFeat, DenseFeat, get_feature_names
 from deepctr_torch.models import *
@@ -22,28 +24,38 @@ if __name__ == "__main__":
         num_neg = np.sum(tgt_data['click'] == 0)
         print ("Pos: %d, Neg: %d" % (pos_neg, num_neg))
 
-    final_data = pd.concat([input_data, tgt_data], axis=1, join='inner')
-    input_columns=['weekday', 'hour', 'IP', 'region', 'city', 'adexchange', 'domain',
-       'slotid', 'slotwidth', 'slotheight', 'slotvisibility', 'slotformat',
-       'creative', 'advertiser', 'useragent', 'slotprice']
+    print(input_data.head())
+
     sparse_features = ['weekday', 'hour', 'region', 'city', 'adexchange', 'slotwidth', 'slotheight', \
-            'slotvisibility', 'slotformat', 'creative', 'advertiser', 'useragent', 'slotprice', \
-            'IP', 'domain', 'slotid']
-    dense_features = []
-    target= ['click']
+        'slotvisibility', 'slotformat', 'creative', 'advertiser', 'useragent', 'slotprice', \
+        'IP', 'domain', 'slotid']
 
     # Label Encoding for sparse features
     for feat in sparse_features:
         lbe = LabelEncoder()
-        final_data[feat] = lbe.fit_transform(final_data[feat])
+        input_data[feat] = lbe.fit_transform(input_data[feat])
+
+
+    # Code structure is same for ICA and PCA.
+    pca = PCA(n_components=4)
+    # pca = FastICA(n_components=4)
+    principalComponents = pca.fit_transform(input_data)
+    cols = ['pc1', 'pc2', 'pc3', 'pc4']
+    principalDf = pd.DataFrame(data = principalComponents
+                , columns = cols)
+
+    final_data = pd.concat([principalDf, tgt_data], axis=1, join='inner')
+    input_columns= cols
+    sparse_features = cols
+    dense_features = []
+    target= ['click']
+
 
     # Count unique feautres for each sparse feature
     fixlen_feature_columns = [SparseFeat(feat, final_data[feat].nunique())
                               for feat in sparse_features]
     dnn_feature_columns = fixlen_feature_columns
     linear_feature_columns = fixlen_feature_columns
-
-    print(dnn_feature_columns)
 
     feature_names = get_feature_names(
         linear_feature_columns + dnn_feature_columns)
@@ -60,7 +72,7 @@ if __name__ == "__main__":
         print('cuda ready...')
         device = 'cuda:0'
 
-    model = DeepFM(linear_feature_columns=linear_feature_columns, dnn_feature_columns=dnn_feature_columns,
+    model = PNN(dnn_feature_columns=dnn_feature_columns,
                    task='binary',
                    l2_reg_embedding=1e-5, device=device)
 
